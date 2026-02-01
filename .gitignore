@@ -1,0 +1,6 @@
+.vs/
+bin/
+obj/
+*.wav
+*.exe
+*.vcxproj.user
