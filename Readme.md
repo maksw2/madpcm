@@ -32,16 +32,24 @@ Measured on 16-bit PCM sources:
 | suppe_poet_and_peasant.wav | 54.54 | 1640 | 55.58 dB | 32.89 dB |
 | the_four_seasons.wav       | 44.67 | 778  | 57.31 dB | 36.76 dB |
 
-**MADPCM**:  
+**MADPCM** (slow):  
 | File                       | RMSE  | MAE  | PSNR     | SNR      | Enc Time | Dec Time |
 | -------------------------- | ----- | ---- | -------- | -------- | -------- | -------- |
-| Marche_Persanne.wav        | 27.31 | 383  | 61.58 dB | 37.60 dB | 3.308s   | 0.049s   |
-| Egyptischer_Marsch.wav     | 32.13 | 623  | 60.17 dB | 37.61 dB | 7.162s   | 0.090s   |
-| suppe_poet_and_peasant.wav | 37.07 | 773  | 58.93 dB | 36.24 dB | 17.485s  | 0.221s   |
-| the_four_seasons.wav       | 25.03 | 245  | 62.34 dB | 41.79 dB | 108.089s | 1.373s   |
+| Marche_Persanne.wav        | 27.31 | 383  | 61.58 dB | 37.60 dB | 1.8026s  | 0.049s   |
+| Egyptischer_Marsch.wav     | 32.13 | 623  | 60.17 dB | 37.61 dB | 4.1491s  | 0.090s   |
+| suppe_poet_and_peasant.wav | 37.07 | 773  | 58.93 dB | 36.24 dB | 10.3231s | 0.221s   |
+| the_four_seasons.wav       | 25.03 | 245  | 62.34 dB | 41.79 dB | 64.2167s | 1.373s   |
+
+**MADPCM** (fast):  
+| File                       | RMSE  | MAE  | PSNR     | SNR      | Enc Time |
+| -------------------------- | ----- | ---- | -------- | -------- | -------- |
+| Marche_Persanne.wav        | 29.02 | 512  | 61.05 dB | 37.07 dB | 0.2169s  |
+| Egyptischer_Marsch.wav     | 34.04 | 686  | 59.67 dB | 37.10 dB | 0.5044s  |
+| suppe_poet_and_peasant.wav | 39.38 | 800  | 58.40 dB | 35.72 dB | 1.2460s  |
+| the_four_seasons.wav       | 26.40 | 247  | 61.88 dB | 41.33 dB | 7.6906s  |
 
 All tested on a Ryzen 5 3600XT running Windows Server 2025 Datacenter build 26100.32230  
-The numbers speak for themselves.  
+Decode speed for MADPCM is the same on slow and fast, this affects only the encoder.  
 File size reduction: ~74% vs WAV.  
 Same bitrate class and similar complexity as IMA ADPCM.
 
@@ -56,7 +64,7 @@ include `madpcm.c` in your build and include `madpcm.h` in your code.
 preprocessor defines you can use in your project:  
 `MADPCM_FREESTANDING` builds the engine for freestanding  
 `MADPCM_MEMFUNCS` defines memcpy and memset  
-for example MSVC with /Oi-, if freestanding and gcc/clang always define it.
+Use with MSVC /Oi- or always define it for freestanding gcc/clang.
 
 ## what this does not care about
 

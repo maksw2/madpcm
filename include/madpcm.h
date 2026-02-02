@@ -1,11 +1,12 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // Core MADPCM functions
-int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* history);
+int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* history, bool fast);
 void decodeMADPCMBlock(const uint8_t* inBuffer, int16_t* outSamples, int16_t* history);
-int encodeMADPCMStereoBlock(const int16_t* inL, const int16_t* inR, uint8_t* outBuffer, int16_t* historyM, int16_t* historyS);
+int encodeMADPCMStereoBlock(const int16_t* inL, const int16_t* inR, uint8_t* outBuffer, int16_t* historyM, int16_t* historyS, bool fast);
 void decodeMADPCMStereoBlock(const uint8_t* inBuffer, int16_t* outL, int16_t* outR, int16_t* historyM, int16_t* historyS);
 
 #define MADPCM_BLOCK_SAMPLES 1024

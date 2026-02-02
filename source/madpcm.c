@@ -72,8 +72,7 @@ typedef struct {
 typedef struct {
     int64_t err;
     int16_t h[LPC_ORDER];
-    uint8_t path[256]; // Sub-block path
-} TrellisPath;
+} TrellisState;
 
 // Math Helpers
 static inline int16_t clamp_q15(int32_t x) {
@@ -137,17 +136,30 @@ static inline int16_t dequantizeLUT(int8_t nibble, int16_t scale) {
     return (sign < 0) ? (int16_t)-val : (int16_t)val;
 }
 
-// Helper to find nearest Gaussian nibble
+// Finds best nibble in O(1) using inverse quantization estimation
 static int8_t findBestNibble(int32_t target, int16_t scale) {
-    int32_t bestErr = 0x7FFFFFFF;
-    int8_t bestN = 0;
-    for (int i = 0; i < 16; i++) {
-        int8_t packed = (i < 8) ? i : (i & 0x07) | 0x08;
-        int16_t guess = dequantizeLUT(packed, scale);
-        int32_t err = abs_int32(target - guess);
-        if (err < bestErr) { bestErr = err; bestN = packed; }
+    if (scale < 1) scale = 1;
+
+    int32_t absTarget = abs_int32(target);
+    // Approximation: index ~ (val * 160) >> 16
+    // 1/410 (step size) in Q16 is approx 160
+    int32_t val = (absTarget << 11) / scale;
+    int32_t idx = (val * 160) >> 16;
+
+    if (idx > 7) idx = 7;
+
+    // Check neighbor to handle boundary cases
+    int32_t est = (scale * kGaussSteps[idx]) >> 11;
+    int32_t diff1 = abs_int32(absTarget - est);
+
+    if (idx < 7) {
+        int32_t est2 = (scale * kGaussSteps[idx + 1]) >> 11;
+        int32_t diff2 = abs_int32(absTarget - est2);
+        if (diff2 < diff1) idx++;
     }
-    return bestN;
+
+    if (target < 0) return (int8_t)(idx | 0x08);
+    return (int8_t)idx;
 }
 
 static inline void stereoToMidSide(int16_t* l, int16_t* r, int count) {
@@ -167,7 +179,7 @@ static inline void midSideToStereo(int16_t* l, int16_t* r, int count) {
 }
 
 // Encoder
-int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* history) {
+int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* history, bool fast) {
     MADPCMBlockHeader* header = (MADPCMBlockHeader*)outBuffer;
     uint8_t* payload = outBuffer + sizeof(MADPCMBlockHeader);
 
@@ -179,7 +191,7 @@ int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* his
         memset(header->coeffs, 0, sizeof(header->coeffs));
     }
 
-    // Simulation & Heuristics Loop (Preserved)
+    // Simulation & Heuristics Loop
     int64_t sigEnergy = 0, resEnergy = 0;
     int zeroCrossings = 0;
     int32_t maxResSub[4] = { 0 };
@@ -225,13 +237,12 @@ int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* his
     // Populate scales with Gaussian Correction (~0.66x)
     for (int k = 0; k < 4; k++) {
         int32_t targetMax = useFallback ? maxSigSub[k] : maxResSub[k];
-        // Gauss table max is ~1.5x, so we scale down to fit the peak
         int32_t s = (targetMax * 2) / 3;
         if (s < 10) s = 10;
         header->scales[k] = clamp_q15(s);
     }
 
-    // Trellis Quantization (Replaces Closed Loop)
+    // Trellis Quantization
     int16_t curHist[LPC_ORDER];
     memcpy(curHist, history, sizeof(curHist));
 
@@ -239,18 +250,44 @@ int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* his
     for (int sb = 0; sb < 4; sb++) {
         int16_t scale = header->scales[sb];
         const int16_t* blk = inSamples + (sb * 256);
+        uint8_t* subPayload = payload + (sb * 128);
 
-        TrellisPath paths[TRELLIS_K];
+        // FAST MODE: No Trellis
+        if (fast) {
+            for (int i = 0; i < 256; i += 2) {
+                // Nibble 1
+                int32_t p1 = (c0 * curHist[0] + c1 * curHist[1] + c2 * curHist[2] + c3 * curHist[3]) >> 12;
+                int8_t n1 = findBestNibble(blk[i] - p1, scale);
+                int16_t r1 = clamp_q15(p1 + dequantizeLUT(n1, scale));
+                curHist[3] = curHist[2]; curHist[2] = curHist[1]; curHist[1] = curHist[0]; curHist[0] = r1;
+
+                // Nibble 2
+                int32_t p2 = (c0 * curHist[0] + c1 * curHist[1] + c2 * curHist[2] + c3 * curHist[3]) >> 12;
+                int8_t n2 = findBestNibble(blk[i + 1] - p2, scale);
+                int16_t r2 = clamp_q15(p2 + dequantizeLUT(n2, scale));
+                curHist[3] = curHist[2]; curHist[2] = curHist[1]; curHist[1] = curHist[0]; curHist[0] = r2;
+
+                subPayload[i >> 1] = (n1 & 0x0F) | (n2 << 4);
+            }
+            continue;
+        }
+
+        // QUALITY MODE: Trellis
+        // Traceback buffers [sample][path]
+        static int8_t trace_nib[256][TRELLIS_K];
+        static int8_t trace_idx[256][TRELLIS_K];
+
+        TrellisState states[TRELLIS_K];
         int activePaths = 1;
-        paths[0].err = 0;
-        memcpy(paths[0].h, curHist, sizeof(curHist));
+        states[0].err = 0;
+        memcpy(states[0].h, curHist, sizeof(curHist));
 
         for (int i = 0; i < 256; i++) {
             TrellisCandidate cands[TRELLIS_K * 3];
             int candCount = 0;
 
             for (int p = 0; p < activePaths; p++) {
-                int16_t* h = paths[p].h;
+                int16_t* h = states[p].h;
                 int32_t pred = (c0 * h[0] + c1 * h[1] + c2 * h[2] + c3 * h[3]) >> 12;
                 int32_t target = blk[i] - pred;
 
@@ -264,9 +301,10 @@ int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* his
 
                     int8_t nib = (idx < 8) ? idx : (idx & 0x07) | 0x08;
                     int16_t rec = clamp_q15(pred + dequantizeLUT(nib, scale));
-                    int64_t sqErr = (int64_t)(blk[i] - rec) * (blk[i] - rec);
+                    int64_t diff = blk[i] - rec;
+                    int64_t sqErr = diff * diff;
 
-                    cands[candCount].err = paths[p].err + sqErr;
+                    cands[candCount].err = states[p].err + sqErr;
                     cands[candCount].pIdx = p;
                     cands[candCount].nib = nib;
                     cands[candCount].val = rec;
@@ -275,8 +313,9 @@ int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* his
             }
 
             // Select best K
-            TrellisPath nextPaths[TRELLIS_K];
+            TrellisState nextStates[TRELLIS_K];
             int nextCount = 0;
+
             for (int k = 0; k < TRELLIS_K && k < candCount; k++) {
                 int bestJ = -1;
                 int64_t minE = -1;
@@ -286,25 +325,35 @@ int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* his
                 }
                 if (bestJ == -1) break;
 
-                nextPaths[k] = paths[cands[bestJ].pIdx];
-                nextPaths[k].err = cands[bestJ].err;
-                nextPaths[k].path[i] = cands[bestJ].nib;
+                // Save traceback data instead of full path copy
+                trace_idx[i][k] = (int8_t)cands[bestJ].pIdx;
+                trace_nib[i][k] = cands[bestJ].nib;
 
-                int16_t* h = nextPaths[k].h;
+                nextStates[k] = states[cands[bestJ].pIdx];
+                nextStates[k].err = cands[bestJ].err;
+
+                int16_t* h = nextStates[k].h;
                 h[3] = h[2]; h[2] = h[1]; h[1] = h[0]; h[0] = cands[bestJ].val;
 
                 cands[bestJ].err = -1; // Mark used
                 nextCount++;
             }
             activePaths = nextCount;
-            memcpy(paths, nextPaths, sizeof(TrellisPath) * activePaths);
+            memcpy(states, nextStates, sizeof(TrellisState) * activePaths);
         }
 
-        // Commit best path
-        memcpy(curHist, paths[0].h, sizeof(curHist));
-        int byteStart = sb * 128;
-        for (int i = 0; i < 256; i += 2) {
-            payload[byteStart + (i >> 1)] = (paths[0].path[i] & 0x0F) | (paths[0].path[i + 1] << 4);
+        // Commit best path (Backtracking)
+        memcpy(curHist, states[0].h, sizeof(curHist));
+        int bestPathIdx = 0; // Index 0 is best due to sort
+
+        uint8_t nibbles[256];
+        for (int i = 255; i >= 0; i--) {
+            nibbles[i] = trace_nib[i][bestPathIdx];
+            bestPathIdx = trace_idx[i][bestPathIdx];
+        }
+
+        for (int j = 0; j < 128; j++) {
+            subPayload[j] = (nibbles[2 * j] & 0x0F) | (nibbles[2 * j + 1] << 4);
         }
     }
 
@@ -313,7 +362,7 @@ int encodeMADPCMBlock(const int16_t* inSamples, uint8_t* outBuffer, int16_t* his
 }
 
 // Adaptive Stereo Encoder
-int encodeMADPCMStereoBlock(const int16_t* inL, const int16_t* inR, uint8_t* outBuffer, int16_t* hL, int16_t* hR) {
+int encodeMADPCMStereoBlock(const int16_t* inL, const int16_t* inR, uint8_t* outBuffer, int16_t* hL, int16_t* hR, bool fast) {
     int16_t bufL[BLOCK_SAMPLES], bufR[BLOCK_SAMPLES];
     memcpy(bufL, inL, sizeof(bufL));
     memcpy(bufR, inR, sizeof(bufR));
@@ -330,8 +379,8 @@ int encodeMADPCMStereoBlock(const int16_t* inL, const int16_t* inR, uint8_t* out
     bool useMS = (eMS < eLR * 0.9f);
     if (useMS) stereoToMidSide(bufL, bufR, BLOCK_SAMPLES);
 
-    int s1 = encodeMADPCMBlock(bufL, outBuffer, hL);
-    int s2 = encodeMADPCMBlock(bufR, outBuffer + s1, hR);
+    int s1 = encodeMADPCMBlock(bufL, outBuffer, hL, fast);
+    int s2 = encodeMADPCMBlock(bufR, outBuffer + s1, hR, fast);
 
     // Flagging: Use LSB of first scale
     MADPCMBlockHeader* h = (MADPCMBlockHeader*)outBuffer;
