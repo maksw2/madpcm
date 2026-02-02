@@ -1,9 +1,8 @@
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 #include <madpcm.h>
 
 typedef struct {
@@ -222,8 +221,7 @@ int main(int argc, char* argv[]) {
         inputPath = argv[2]; outputPath = argv[3];
     }
 
-    LARGE_INTEGER freq, start, end;
-    QueryPerformanceFrequency(&freq);
+    clock_t start, end;
 
     if (isEncode) {
         int16_t* inL, * inR;
@@ -268,7 +266,7 @@ int main(int argc, char* argv[]) {
         }
         int16_t hM[4] = { 0 }, hS[4] = { 0 };
 
-        QueryPerformanceCounter(&start);
+        start = clock();
         for (int i = 0; i < numBlocks; i++) {
             int off = i * MADPCM_BLOCK_SAMPLES;
             if (channels == 2)
@@ -276,9 +274,9 @@ int main(int argc, char* argv[]) {
             else
                 encodeMADPCMBlock(inL + off, outBuf + (i * blockSize), hM, fast);
         }
-        QueryPerformanceCounter(&end);
+        end = clock();
 
-        printf("Encoded in %f seconds (%s mode)\n", (double)(end.QuadPart - start.QuadPart) / freq.QuadPart, fast ? "fast" : "slow");
+        printf("Encoded in %f seconds (%s mode)\n", (double)(end - start) / CLOCKS_PER_SEC, fast ? "fast" : "slow");
         FILE* f = fopen(outputPath, "wb");
         write_wav_header(f, WAVE_FORMAT_MADPCM, channels, rate, 0, numBlocks * blockSize);
         fwrite(outBuf, 1, numBlocks * blockSize, f);
@@ -309,16 +307,16 @@ int main(int argc, char* argv[]) {
         int16_t hM[4] = { 0 }, hS[4] = { 0 };
         int blockSize = (channels == 2) ? MADPCM_STEREO_SIZE : MADPCM_MONO_SIZE;
 
-        QueryPerformanceCounter(&start);
+        start = clock();
         for (int i = 0; i < totalSamples / MADPCM_BLOCK_SAMPLES; i++) {
             int offS = i * MADPCM_BLOCK_SAMPLES;
             int offB = i * blockSize;
             if (channels == 2) decodeMADPCMStereoBlock(inBuf + offB, outL + offS, outR + offS, hM, hS);
             else decodeMADPCMBlock(inBuf + offB, outL + offS, hM);
         }
-        QueryPerformanceCounter(&end);
+        end = clock();
 
-        printf("Decoded in %f seconds\n", (double)(end.QuadPart - start.QuadPart) / freq.QuadPart);
+        printf("Decoded in %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
 
         FILE* f = fopen(outputPath, "wb");
         write_wav_header(f, 1, channels, rate, 16, totalSamples * channels * 2);

@@ -15,7 +15,7 @@ ffmpeg -y -hide_banner -i the_four_seasons_ima.wav the_four_seasons_ima_d.wav
 adpcm-xq.exe -8 -y Egyptischer_Marsch.wav Egyptischer_Marsch_xq.wav
 adpcm-xq.exe -8 -y Marche_Persanne.wav Marche_Persanne_xq.wav
 adpcm-xq.exe -8 -y suppe_poet_and_peasant.wav suppe_poet_and_peasant_xq.wav
-adpcm-xq.exe -8 -y the_four_seasons.wav the_four_seasons_xq.wav
+::adpcm-xq.exe -8 -y the_four_seasons.wav the_four_seasons_xq.wav
 
 adpcm-xq.exe -d -y Egyptischer_Marsch_xq.wav Egyptischer_Marsch_xq_d.wav
 adpcm-xq.exe -d -y Marche_Persanne_xq.wav Marche_Persanne_xq_d.wav

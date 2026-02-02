@@ -6,7 +6,7 @@ No transforms. No psychoacoustics. No entropy coding. No excuses.
 
 ## what is it?
 
-ADPCM mixed with FLAC in 400 lines of C.  
+ADPCM mixed with FLAC in ~450 lines of C.  
 
 ## warning
 
@@ -25,12 +25,12 @@ Measured on 16-bit PCM sources:
 | the_four_seasons.wav       | 47.71 | 2630 | 56.74 dB | 36.19 dB | 3.927s   | 2.150s   |
 
 **ADPCM-XQ** (lookahead=8):  
-| File                       | RMSE  | MAE  | PSNR     | SNR      |
-| -------------------------- | ----- | ---- | -------- | -------- |
-| Marche_Persanne.wav        | 42.75 | 1228 | 57.69 dB | 33.71 dB |
-| Egyptischer_Marsch.wav     | 47.31 | 1851 | 56.81 dB | 34.25 dB |
-| suppe_poet_and_peasant.wav | 54.54 | 1640 | 55.58 dB | 32.89 dB |
-| the_four_seasons.wav       | 44.67 | 778  | 57.31 dB | 36.76 dB |
+| File                       | RMSE  | MAE  | PSNR     | SNR      | Enc Time |
+| -------------------------- | ----- | ---- | -------- | -------- | -------- |
+| Marche_Persanne.wav        | 42.75 | 1228 | 57.69 dB | 33.71 dB | 17.486s  |
+| Egyptischer_Marsch.wav     | 47.31 | 1851 | 56.81 dB | 34.25 dB | 40.850s  |
+| suppe_poet_and_peasant.wav | 54.54 | 1640 | 55.58 dB | 32.89 dB | 102.432s |
+| the_four_seasons.wav       | 44.67 | 778  | 57.31 dB | 36.76 dB | 607.841s |
 
 **MADPCM** (slow):  
 | File                       | RMSE  | MAE  | PSNR     | SNR      | Enc Time | Dec Time |
@@ -40,7 +40,7 @@ Measured on 16-bit PCM sources:
 | suppe_poet_and_peasant.wav | 37.07 | 773  | 58.93 dB | 36.24 dB | 10.3231s | 0.221s   |
 | the_four_seasons.wav       | 25.03 | 245  | 62.34 dB | 41.79 dB | 64.2167s | 1.373s   |
 
-**MADPCM** (fast):  
+**MADPCM** (fast; no lookahead):  
 | File                       | RMSE  | MAE  | PSNR     | SNR      | Enc Time |
 | -------------------------- | ----- | ---- | -------- | -------- | -------- |
 | Marche_Persanne.wav        | 29.02 | 512  | 61.05 dB | 37.07 dB | 0.2169s  |
@@ -50,8 +50,8 @@ Measured on 16-bit PCM sources:
 
 All tested on a Ryzen 5 3600XT running Windows Server 2025 Datacenter build 26100.32230  
 Decode speed for MADPCM is the same on slow and fast, this affects only the encoder.  
-File size reduction: ~74% vs WAV.  
-Same bitrate class and similar complexity as IMA ADPCM.
+Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimalize potential penalty.
+File size reduction: ~74% vs WAV.
 
 ## does it sound better?
 
