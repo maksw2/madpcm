@@ -53,6 +53,22 @@ Decode speed for MADPCM is the same on slow and fast, this affects only the enco
 Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimalize potential penalty.
 File size reduction: ~74% vs WAV.
 
+<details><summary>how a samsung s21 behaves</summary>
+
+```
+~/madpcm $ ./test.out encode slow suppe_poet_and_peasant.wav suppe_poet_and_peasant_ad.wav
+Loaded suppe_poet_and_peasant.wav: 48000 Hz, Stereo
+Encoded in 19.806205 seconds (slow mode)
+~/madpcm $ ./test.out encode fast suppe_poet_and_peasant.wav suppe_poet_and_peasant_ad.wav
+Loaded suppe_poet_and_peasant.wav: 48000 Hz, Stereo
+Encoded in 2.185003 seconds (fast mode)
+~/madpcm $ ./test.out decode suppe_poet_and_peasant_ad.wav suppe_poet_and_peasant_d.wav
+Loaded suppe_poet_and_peasant_ad.wav: 2 channels, 48000 Hz, 28272640 samples
+Decoded in 0.275335 seconds
+```
+
+</details>
+
 ## does it sound better?
 
 To me. I think. Better than IMA ADPCM.  
