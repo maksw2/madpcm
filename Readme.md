@@ -6,7 +6,7 @@ No transforms. No psychoacoustics. No entropy coding. No excuses.
 
 ## what is it?
 
-ADPCM mixed with FLAC in ~450 lines of C.  
+ADPCM mixed with FLAC in ~500 lines of C.
 
 ## warning
 
@@ -78,8 +78,8 @@ From my tests, MADPCM has a slightly higher noise floor and IMA ADPCM is ass.
 
 ## how 2 use it
 
-include `madpcm.c` in your build and include `madpcm.h` in your code.  
-preprocessor defines you can use in your project:  
+include `madpcm.h` in your code.  
+`MADPCM_IMPLEMENTATION` for the actual implementation (define **once**)  
 `MADPCM_FREESTANDING` builds the engine for freestanding  
 `MADPCM_MEMFUNCS` defines memcpy and memset  
 Use when MSVC /Oi- or always define it for freestanding gcc/clang.

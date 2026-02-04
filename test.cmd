@@ -20,7 +20,7 @@ adpcm-xq.exe -8 -y suppe_poet_and_peasant.wav suppe_poet_and_peasant_xq.wav
 adpcm-xq.exe -d -y Egyptischer_Marsch_xq.wav Egyptischer_Marsch_xq_d.wav
 adpcm-xq.exe -d -y Marche_Persanne_xq.wav Marche_Persanne_xq_d.wav
 adpcm-xq.exe -d -y suppe_poet_and_peasant_xq.wav suppe_poet_and_peasant_xq_d.wav
-adpcm-xq.exe -d -y the_four_seasons_xq.wav the_four_seasons_xq_d.wav
+::adpcm-xq.exe -d -y the_four_seasons_xq.wav the_four_seasons_xq_d.wav
 
 :: --- MADPCM SLOW ---
 bin\x64\Release\example.exe encode slow Egyptischer_Marsch.wav Egyptischer_Marsch_ad.wav
