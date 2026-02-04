@@ -74,13 +74,15 @@ Decoded in 0.275335 seconds
 To me. I think. Better than IMA ADPCM.  
 No formal ABX tests were done yet.
 
+From my tests, MADPCM has a slightly higher noise floor and IMA ADPCM is ass.
+
 ## how 2 use it
 
 include `madpcm.c` in your build and include `madpcm.h` in your code.  
 preprocessor defines you can use in your project:  
 `MADPCM_FREESTANDING` builds the engine for freestanding  
 `MADPCM_MEMFUNCS` defines memcpy and memset  
-Use with MSVC /Oi- or always define it for freestanding gcc/clang.
+Use when MSVC /Oi- or always define it for freestanding gcc/clang.
 
 ## what this does not care about
 
