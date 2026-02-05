@@ -64,6 +64,16 @@ Decode speed for MADPCM is the same on slow and fast, this affects only the enco
 Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimize potential penalty.
 File size reduction: ~74% vs WAV, 4.48% overhead compared to IMA ADPCM.
 
+<details><summary>test file details</summary>
+
+All downloaded from youtube at max quality, converted to wav.  
+Egyptischer_Marsch.wav 43,5 MB Length: 03:57 Sample rate: 48 kHz Sample size: 16 bit Stereo  
+Marche_Persanne.wav 18,7 MB Length: 01:51 Sample rate: 48 kHz Sample size: 16 bit Stereo  
+suppe_poet_and_peasant.wav 107 MB Length: 09:49 Sample rate: 48 kHz Sample size: 16 bit Stereo  
+the_four_seasons.wav 665 MB Length: 01:00:33 Sample rate: 48 kHz Sample size: 16 bit Stereo
+
+</details>
+
 <details><summary>how a samsung s21 behaves</summary>
 
 ```
@@ -77,6 +87,24 @@ Encoded in 0.311960 seconds (fast mode)
 Loaded suppe_poet_and_peasant_ad.wav: 2 channels, 48000 Hz, 28272640 samples
 Decoded in 0.079933 seconds
 ```
+
+</details>
+
+<details><summary>how a 486 behaves (dosbox-x)</summary>
+
+**Environment:** Emulated 486 (25,000 cycles), 15s Stereo WAV @ 44.1kHz.
+
+```text
+C:\>mad.exe encode fast 37.wav 37_ad.wav
+Loaded 37.wav: 44100 Hz, Stereo
+Encoded in 10.659341 seconds (fast mode)
+
+C:\>mad.exe decode 37_ad.wav 37_d.wav
+Loaded 37_ad.wav: 2 channels, 44100 Hz, 661504 samples
+Decoded in 2.747253 seconds
+```
+
+scary shit
 
 </details>
 
