@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <time.h>
+#include <omp.h>
 #define MADPCM_IMPLEMENTATION
 #define MADPCM_FREESTANDING
 #define MADPCM_MEMFUNCS
@@ -232,8 +232,6 @@ int main(int argc, char* argv[]) {
         inputPath = argv[2]; outputPath = argv[3];
     }
 
-    clock_t start, end;
-
     if (isEncode) {
         int16_t* inL, * inR;
         int rate, channels;
@@ -276,23 +274,32 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        madpcm_state_t history = { 0 };
-
-        start = clock();
+        double start = omp_get_wtime();
         if (channels == 2) {
+            #pragma omp parallel for schedule(dynamic)
             for (int i = 0; i < numBlocks; i++) {
                 int off = i * MADPCM_BLOCK_SAMPLES;
-                madpcm_encode_block_stereo(inL + off, inR + off, outBuf + (i * blockSize), &history, fast);
+                
+                // If not the first block, point to the 4 samples immediately preceding this offset
+                const int16_t* prevL = (i == 0) ? NULL : (inL + off - 4);
+                const int16_t* prevR = (i == 0) ? NULL : (inR + off - 4);
+
+                madpcm_encode_block_stereo(inL + off, inR + off, prevL, prevR, outBuf + (i * blockSize), fast);
             }
         } else {
+            #pragma omp parallel for schedule(dynamic)
             for (int i = 0; i < numBlocks; i++) {
                 int off = i * MADPCM_BLOCK_SAMPLES;
-                madpcm_encode_block(inL + off, outBuf + (i * blockSize), &history, fast);
+                
+                // If not the first block, point to the 4 samples immediately preceding this offset
+                const int16_t* prev = (i == 0) ? NULL : (inL + off - 4);
+
+                madpcm_encode_block(inL + off, prev, outBuf + (i * blockSize), fast);
             }
         }
-        end = clock();
+        double end = omp_get_wtime();
 
-        printf("Encoded in %f seconds (%s mode)\n", (double)(end - start) / CLOCKS_PER_SEC, fast ? "fast" : "slow");
+        printf("Encoded in %f seconds (%s mode)\n", end - start, fast ? "fast" : "slow");
         FILE* f = fopen(outputPath, "wb");
         if (!f) {
             printf("fopen failed!\n");
@@ -325,28 +332,27 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        madpcm_state_t history = { 0 };
         int blockSize = (channels == 2) ? MADPCM_STEREO_SIZE : MADPCM_MONO_SIZE;
 
-        start = clock();
+        double start = omp_get_wtime();
         if (channels == 2) {
-            int blockSize = MADPCM_STEREO_SIZE;
+            #pragma omp parallel for schedule(dynamic)
             for (int i = 0; i < totalSamples / MADPCM_BLOCK_SAMPLES; i++) {
                 int offS = i * MADPCM_BLOCK_SAMPLES;
-                int offB = i * blockSize;
-                madpcm_decode_block_stereo(inBuf + offB, outL + offS, outR + offS, &history);
+                int offB = i * MADPCM_STEREO_SIZE;
+                madpcm_decode_block_stereo(inBuf + offB, outL + offS, outR + offS);
             }
         } else {
-            int blockSize = MADPCM_MONO_SIZE;
+            #pragma omp parallel for schedule(dynamic)
             for (int i = 0; i < totalSamples / MADPCM_BLOCK_SAMPLES; i++) {
                 int offS = i * MADPCM_BLOCK_SAMPLES;
-                int offB = i * blockSize;
-                madpcm_decode_block(inBuf + offB, outL + offS, &history);
+                int offB = i * MADPCM_MONO_SIZE;
+                madpcm_decode_block(inBuf + offB, outL + offS);
             }
         }
-        end = clock();
+        double end = omp_get_wtime();
 
-        printf("Decoded in %f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
+        printf("Decoded in %f seconds\n", end - start);
 
         FILE* f = fopen(outputPath, "wb");
         if (!f) {

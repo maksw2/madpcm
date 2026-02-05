@@ -9,23 +9,17 @@
 
 #define MADPCM_LPC_ORDER 4
 #define MADPCM_BLOCK_SAMPLES 1024
-#define MADPCM_HEADER_SIZE 16
+#define MADPCM_HEADER_SIZE 24
 #define MADPCM_PAYLOAD_SIZE 512
-// Mono Block = 528 bytes
 #define MADPCM_MONO_SIZE (MADPCM_HEADER_SIZE + MADPCM_PAYLOAD_SIZE) 
-// Stereo Block = 1056 bytes
 #define MADPCM_STEREO_SIZE (MADPCM_MONO_SIZE * 2)
 #define MADPCM_WAVE_FORMAT 0x4D41 // 'MA' in hex
 
-typedef struct madpcm_state_t {
-    int16_t hM[MADPCM_LPC_ORDER], hS[MADPCM_LPC_ORDER];
-} madpcm_state_t;
-
 // Core MADPCM functions
-int madpcm_encode_block(const int16_t* inSamples, uint8_t* outBuffer, madpcm_state_t* history, bool fast);
-int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, uint8_t* outBuffer, madpcm_state_t* history, bool fast);
-void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples, madpcm_state_t* history);
-void madpcm_decode_block_stereo(const uint8_t* inBuffer, int16_t* outL, int16_t* outR, madpcm_state_t* history);
+int madpcm_encode_block(const int16_t* inSamples, const int16_t* prevSamples, uint8_t* outBuffer, bool fast);
+int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, const int16_t* prevL, const int16_t* prevR, uint8_t* outBuffer, bool fast);
+void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples);
+void madpcm_decode_block_stereo(const uint8_t* inBuffer, int16_t* outL, int16_t* outR);
 
 #ifdef MADPCM_IMPLEMENTATION
 
@@ -85,6 +79,7 @@ static const int16_t madpcm__gauss_steps[8] = { 205, 614, 1024, 1433, 1843, 2252
 typedef struct madpcm__block_header {
     int16_t scales[4]; // LSB of scales[0] is Stereo Flag
     int16_t coeffs[MADPCM_LPC_ORDER];
+    int16_t seed[MADPCM_LPC_ORDER]; // History samples
 } madpcm__block_header;
 
 // Trellis helper struct
@@ -204,9 +199,20 @@ static inline void madpcm__mid_side_to_stereo(int16_t* l, int16_t* r, int count)
 }
 
 // Encoder
-int madpcm_encode_block(const int16_t* inSamples, uint8_t* outBuffer, madpcm_state_t* history, bool fast) {
+int madpcm_encode_block(const int16_t* inSamples, const int16_t* prevSamples, uint8_t* outBuffer, bool fast) {
     madpcm__block_header* header = (madpcm__block_header*)outBuffer;
     uint8_t* payload = outBuffer + sizeof(madpcm__block_header);
+
+    // Capture History from Raw PCM
+    // internal history layout: [0]=t-1, [1]=t-2, [2]=t-3, [3]=t-4
+    if (prevSamples) {
+        header->seed[0] = prevSamples[3]; 
+        header->seed[1] = prevSamples[2];
+        header->seed[2] = prevSamples[1]; 
+        header->seed[3] = prevSamples[0];
+    } else {
+        madpcm_memset(header->seed, 0, sizeof(header->seed));
+    }
 
     // High Precision Analysis
     int64_t r[MADPCM_LPC_ORDER + 1] = { 0 };
@@ -221,8 +227,10 @@ int madpcm_encode_block(const int16_t* inSamples, uint8_t* outBuffer, madpcm_sta
     int zeroCrossings = 0;
     int32_t maxResSub[4] = { 0 };
     int32_t maxSigSub[4] = { 0 };
+    
+    // Initialize simulation history with perfect seeds
     int16_t simHist[MADPCM_LPC_ORDER];
-    madpcm_memcpy(simHist, history, sizeof(simHist));
+    madpcm_memcpy(simHist, header->seed, sizeof(simHist));
 
     int32_t c0 = header->coeffs[0], c1 = header->coeffs[1];
     int32_t c2 = header->coeffs[2], c3 = header->coeffs[3];
@@ -269,7 +277,7 @@ int madpcm_encode_block(const int16_t* inSamples, uint8_t* outBuffer, madpcm_sta
 
     // Trellis Quantization
     int16_t curHist[MADPCM_LPC_ORDER];
-    madpcm_memcpy(curHist, history, sizeof(curHist));
+    madpcm_memcpy(curHist, header->seed, sizeof(curHist));
 
     // Process 4 sub-blocks
     for (int sb = 0; sb < 4; sb++) {
@@ -299,8 +307,8 @@ int madpcm_encode_block(const int16_t* inSamples, uint8_t* outBuffer, madpcm_sta
 
         // QUALITY MODE: Trellis
         // Traceback buffers [sample][path]
-        static int8_t trace_nib[256][MADPCM_TRELLIS_K];
-        static int8_t trace_idx[256][MADPCM_TRELLIS_K];
+        int8_t trace_nib[256][MADPCM_TRELLIS_K];
+        int8_t trace_idx[256][MADPCM_TRELLIS_K];
 
         madpcm__trellis_state states[MADPCM_TRELLIS_K];
         int activePaths = 1;
@@ -382,15 +390,25 @@ int madpcm_encode_block(const int16_t* inSamples, uint8_t* outBuffer, madpcm_sta
         }
     }
 
-    madpcm_memcpy(history, curHist, sizeof(curHist));
     return sizeof(madpcm__block_header) + (MADPCM_BLOCK_SAMPLES / 2);
 }
 
 // Adaptive Stereo Encoder
-int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, uint8_t* outBuffer, madpcm_state_t* history, bool fast) {
+int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, const int16_t* prevL, const int16_t* prevR, uint8_t* outBuffer, bool fast) {
     int16_t bufL[MADPCM_BLOCK_SAMPLES], bufR[MADPCM_BLOCK_SAMPLES];
+    int16_t histL[4], histR[4];
+
     madpcm_memcpy(bufL, inL, sizeof(bufL));
     madpcm_memcpy(bufR, inR, sizeof(bufR));
+
+    // Prepare local history copies (safe to modify)
+    if (prevL && prevR) {
+        madpcm_memcpy(histL, prevL, 4 * sizeof(int16_t));
+        madpcm_memcpy(histR, prevR, 4 * sizeof(int16_t));
+    } else {
+        madpcm_memset(histL, 0, sizeof(histL));
+        madpcm_memset(histR, 0, sizeof(histR));
+    }
 
     // Adaptive Check: Calculate Energies
     int64_t eLR = 0, eMS = 0;
@@ -402,10 +420,15 @@ int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, uint8_t* 
     }
 
     bool useMS = (eMS < eLR * 0.9f);
-    if (useMS) madpcm__stereo_to_mid_side(bufL, bufR, MADPCM_BLOCK_SAMPLES);
+    
+    // If using MS, we must also convert the HISTORY to MS
+    if (useMS) {
+        madpcm__stereo_to_mid_side(bufL, bufR, MADPCM_BLOCK_SAMPLES);
+        madpcm__stereo_to_mid_side(histL, histR, 4); 
+    }
 
-    int s1 = madpcm_encode_block(bufL, outBuffer, (madpcm_state_t*)&history->hM, fast);
-    int s2 = madpcm_encode_block(bufR, outBuffer + s1, (madpcm_state_t*)&history->hS, fast);
+    int s1 = madpcm_encode_block(bufL, histL, outBuffer, fast);
+    int s2 = madpcm_encode_block(bufR, histR, outBuffer + s1, fast);
 
     // Flagging: Use LSB of first scale
     madpcm__block_header* h = (madpcm__block_header*)outBuffer;
@@ -416,7 +439,7 @@ int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, uint8_t* 
 }
 
 // Decoder
-void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples, madpcm_state_t* history) {
+void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples) {
     const madpcm__block_header* header = (const madpcm__block_header*)inBuffer;
     const uint8_t* payload = inBuffer + sizeof(madpcm__block_header);
 
@@ -425,10 +448,10 @@ void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples, madpcm_st
     const int32_t c2 = header->coeffs[2];
     const int32_t c3 = header->coeffs[3];
 
-    int16_t h0 = history->hM[0];
-    int16_t h1 = history->hM[1];
-    int16_t h2 = history->hM[2];
-    int16_t h3 = history->hM[3];
+    int16_t h0 = header->seed[0];
+    int16_t h1 = header->seed[1];
+    int16_t h2 = header->seed[2];
+    int16_t h3 = header->seed[3];
 
     int sample = 0;
 
@@ -456,17 +479,15 @@ void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples, madpcm_st
             outSamples[sample] = h0;
         }
     }
-
-    history->hM[0] = h0; history->hM[1] = h1; history->hM[2] = h2; history->hM[3] = h3;
 }
 
-void madpcm_decode_block_stereo(const uint8_t* inBuffer, int16_t* outL, int16_t* outR, madpcm_state_t* history) {
+void madpcm_decode_block_stereo(const uint8_t* inBuffer, int16_t* outL, int16_t* outR) {
     const madpcm__block_header* h = (const madpcm__block_header*)inBuffer;
     bool isMS = (h->scales[0] & 1);
 
     int sz = sizeof(madpcm__block_header) + (MADPCM_BLOCK_SAMPLES / 2);
-    madpcm_decode_block(inBuffer, outL, (madpcm_state_t*)&history->hM);
-    madpcm_decode_block(inBuffer + sz, outR, (madpcm_state_t*)&history->hS);
+    madpcm_decode_block(inBuffer, outL);
+    madpcm_decode_block(inBuffer + sz, outR);
 
     if (isMS) madpcm__mid_side_to_stereo(outL, outR, MADPCM_BLOCK_SAMPLES);
 }

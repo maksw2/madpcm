@@ -6,11 +6,20 @@ No transforms. No psychoacoustics. No entropy coding. No excuses.
 
 ## what is it?
 
-ADPCM mixed with FLAC in ~500 lines of C.
+The math of FLAC, but the constraints of ADPCM.  
+~500 lines of pure C.
+
+## under the hood
+
+MADPCM implements a fixed-point 4th-order Linear Predictive Coder (LPC) derived via Levinson-Durbin recursion.  
+A pre-encoding simulation and heuristics loop validates coefficients using Zero Crossing Rate (ZCR) and signal-to-residual energy ratios, triggering fallback mechanisms on model instability.  
+Quantization utilizes a Viterbi trellis search ($K=4$) for global optimization or a greedy O(1) inverse lookahead for speed.  
+Stereo coupling employs adaptive Mid-Side coding, dynamically switching based on inter-channel energy correlation.  
+The core uses Gaussian-optimized step tables and is strictly integer-based to support toaster (read: freestanding) environments.
 
 ## warning
 
-This is work in progress, expect breaking changes.
+This is work in progress, expect breaking changes every other commit.
 
 ## the numbers
 
@@ -35,36 +44,36 @@ Measured on 16-bit PCM sources:
 **MADPCM** (slow):  
 | File                       | RMSE  | MAE  | PSNR     | SNR      | Enc Time | Dec Time |
 | -------------------------- | ----- | ---- | -------- | -------- | -------- | -------- |
-| Marche_Persanne.wav        | 27.31 | 383  | 61.58 dB | 37.60 dB | 1.8026s  | 0.049s   |
-| Egyptischer_Marsch.wav     | 32.13 | 623  | 60.17 dB | 37.61 dB | 4.1491s  | 0.090s   |
-| suppe_poet_and_peasant.wav | 37.07 | 773  | 58.93 dB | 36.24 dB | 10.3231s | 0.221s   |
-| the_four_seasons.wav       | 25.03 | 245  | 62.34 dB | 41.79 dB | 64.2167s | 1.373s   |
+| Marche_Persanne.wav        | 27.30 | 343  | 61.59 dB | 37.61 dB | 0.178s   | 0.008s   |
+| Egyptischer_Marsch.wav     | 32.09 | 623  | 60.18 dB | 37.62 dB | 0.384s   | 0.016s   |
+| suppe_poet_and_peasant.wav | 37.05 | 810  | 58.93 dB | 36.25 dB | 0.991s   | 0.038s   |
+| the_four_seasons.wav       | 25.00 | 222  | 62.35 dB | 41.80 dB | 6.065s   | 0.214s   |
 
 **MADPCM** (fast; no lookahead):  
 | File                       | RMSE  | MAE  | PSNR     | SNR      | Enc Time |
 | -------------------------- | ----- | ---- | -------- | -------- | -------- |
-| Marche_Persanne.wav        | 29.02 | 512  | 61.05 dB | 37.07 dB | 0.2169s  |
-| Egyptischer_Marsch.wav     | 34.04 | 686  | 59.67 dB | 37.10 dB | 0.5044s  |
-| suppe_poet_and_peasant.wav | 39.38 | 800  | 58.40 dB | 35.72 dB | 1.2460s  |
-| the_four_seasons.wav       | 26.40 | 247  | 61.88 dB | 41.33 dB | 7.6906s  |
+| Marche_Persanne.wav        | 29.01 | 512  | 61.06 dB | 37.08 dB | 0.020s   |
+| Egyptischer_Marsch.wav     | 34.01 | 600  | 59.68 dB | 37.11 dB | 0.054s   |
+| suppe_poet_and_peasant.wav | 39.36 | 802  | 58.41 dB | 35.72 dB | 0.115s   |
+| the_four_seasons.wav       | 26.37 | 271  | 61.89 dB | 41.34 dB | 0.680s   |
 
 All tested on a Ryzen 5 3600XT running Windows Server 2025 Datacenter build 26100.32230  
 Decode speed for MADPCM is the same on slow and fast, this affects only the encoder.  
 Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimalize potential penalty.
-File size reduction: ~74% vs WAV.
+File size reduction: ~74% vs WAV, 4.48% overhead compared to IMA ADPCM.
 
 <details><summary>how a samsung s21 behaves</summary>
 
 ```
 ~/madpcm $ ./test.out encode slow suppe_poet_and_peasant.wav suppe_poet_and_peasant_ad.wav
 Loaded suppe_poet_and_peasant.wav: 48000 Hz, Stereo
-Encoded in 19.806205 seconds (slow mode)
+Encoded in 4.128757 seconds (slow mode)
 ~/madpcm $ ./test.out encode fast suppe_poet_and_peasant.wav suppe_poet_and_peasant_ad.wav
 Loaded suppe_poet_and_peasant.wav: 48000 Hz, Stereo
-Encoded in 2.185003 seconds (fast mode)
+Encoded in 0.311960 seconds (fast mode)
 ~/madpcm $ ./test.out decode suppe_poet_and_peasant_ad.wav suppe_poet_and_peasant_d.wav
 Loaded suppe_poet_and_peasant_ad.wav: 2 channels, 48000 Hz, 28272640 samples
-Decoded in 0.275335 seconds
+Decoded in 0.079933 seconds
 ```
 
 </details>
@@ -74,25 +83,22 @@ Decoded in 0.275335 seconds
 To me. I think. Better than IMA ADPCM.  
 No formal ABX tests were done yet.
 
-From my tests, MADPCM has a slightly higher noise floor and IMA ADPCM is ass.
+Compared to the source, MADPCM adds a small, mostly uncorrelated noise floor. Compared to IMA ADPCM, it sounds much cleaner.
 
 ## how 2 use it
 
+it's an `stb` style library:  
 include `madpcm.h` in your code.  
 `MADPCM_IMPLEMENTATION` for the actual implementation (define **once**)  
 `MADPCM_FREESTANDING` builds the engine for freestanding  
-`MADPCM_MEMFUNCS` defines memcpy and memset  
-Use when MSVC /Oi- or always define it for freestanding gcc/clang.
+`MADPCM_MEMFUNCS` defines own memcpy and memset  
+Use when MSVC /Oi- or always define it for freestanding gcc/clang ***if*** you don't have these functions.
 
 ## what this does not care about
 
 - standards
 - legacy compatibility
 - your favorite codec comparison
-
-## roadmap
-
-maybe
 
 ## how to contribute
 
@@ -123,4 +129,4 @@ Q: Will you add [feature]?
 A: Depends. Open an issue.
 
 Q: Can I use this in production?  
-A: When it's finished. So soon™ i hope.
+A: No warranty. Assume breaking changes until it's finished.
