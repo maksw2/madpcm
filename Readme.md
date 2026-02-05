@@ -15,7 +15,9 @@ MADPCM implements a fixed-point 4th-order Linear Predictive Coder (LPC) derived 
 A pre-encoding simulation and heuristics loop validates coefficients using Zero Crossing Rate (ZCR) and signal-to-residual energy ratios, triggering fallback mechanisms on model instability.  
 Quantization utilizes a Viterbi trellis search ($K=4$) for global optimization or a greedy O(1) inverse lookahead for speed.  
 Stereo coupling employs adaptive Mid-Side coding, dynamically switching based on inter-channel energy correlation.  
-The core uses Gaussian-optimized step tables and is strictly integer-based to support toaster (read: freestanding) environments.
+The core uses Gaussian-optimized step tables and is strictly integer-based to support toasters (read: freestanding environments).
+
+The decoder runs entirely in registers, no stack spilling provided it's compiled with optimizations.
 
 ## warning
 
@@ -59,7 +61,7 @@ Measured on 16-bit PCM sources:
 
 All tested on a Ryzen 5 3600XT running Windows Server 2025 Datacenter build 26100.32230  
 Decode speed for MADPCM is the same on slow and fast, this affects only the encoder.  
-Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimalize potential penalty.
+Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimize potential penalty.
 File size reduction: ~74% vs WAV, 4.48% overhead compared to IMA ADPCM.
 
 <details><summary>how a samsung s21 behaves</summary>
