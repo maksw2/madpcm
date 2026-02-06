@@ -4,6 +4,8 @@ ADPCM didn't get worse. Everyone just stopped trying.
 A small, fast, waveform audio codec that fixes what IMA ADPCM got wrong.  
 No transforms. No psychoacoustics. No entropy coding. No excuses.
 
+“The obvious replacement for IMA ADPCM when you control both ends”
+
 ## what is it?
 
 The math of FLAC, but the constraints of ADPCM.  
