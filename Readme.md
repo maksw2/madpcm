@@ -68,7 +68,7 @@ File size reduction: ~74% vs WAV, 4.48% overhead compared to IMA ADPCM.
 
 <details><summary>test file details</summary>
 
-All downloaded from youtube at max quality, converted to wav.  
+All downloaded from youtube with premium at max quality, converted to wav.  
 Egyptischer_Marsch.wav 43,5 MB Length: 03:57 Sample rate: 48 kHz Sample size: 16 bit Stereo  
 Marche_Persanne.wav 18,7 MB Length: 01:51 Sample rate: 48 kHz Sample size: 16 bit Stereo  
 suppe_poet_and_peasant.wav 107 MB Length: 09:49 Sample rate: 48 kHz Sample size: 16 bit Stereo  
