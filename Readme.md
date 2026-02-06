@@ -19,7 +19,7 @@ Quantization utilizes a Viterbi trellis search ($K=4$) for global optimization o
 Stereo coupling employs adaptive Mid-Side coding, dynamically switching based on inter-channel energy correlation.  
 The core uses Gaussian-optimized step tables and is strictly integer-based to support toasters (read: freestanding environments).
 
-The decoder runs entirely in registers, no stack spilling provided it's compiled with optimizations.
+The decoder runs entirely in registers, no stack spilling provided it's compiled with optimizations (tested with mingw gcc 15.1.0).
 
 ## warning
 
@@ -104,8 +104,9 @@ the_four_seasons.wav 665 MB Length: 01:00:33 Sample rate: 48 kHz Sample size: 16
 
 </details>
 
-<details><summary>how a samsung s21 behaves</summary>
+<details><summary>how other underpowered hardware behaves</summary>
 
+samsung s21:  
 ```
 ~/madpcm $ ./test.out encode slow suppe_poet_and_peasant.wav suppe_poet_and_peasant_ad.wav
 Loaded suppe_poet_and_peasant.wav: 48000 Hz, Stereo
@@ -116,6 +117,19 @@ Encoded in 0.311960 seconds (fast mode)
 ~/madpcm $ ./test.out decode suppe_poet_and_peasant_ad.wav suppe_poet_and_peasant_d.wav
 Loaded suppe_poet_and_peasant_ad.wav: 2 channels, 48000 Hz, 28272640 samples
 Decoded in 0.079933 seconds
+```
+
+raspberry pi 4:  
+```
+maksw@raspberrypi:~/madpcm $ ./test.out encode slow suppe_poet_and_peasant.wav suppe_poet_and_peasant_ad.wav
+Loaded suppe_poet_and_peasant.wav: 48000 Hz, Stereo
+Encoded in 4.307982 seconds (slow mode)
+maksw@raspberrypi:~/madpcm $ ./test.out encode fast suppe_poet_and_peasant.wav suppe_poet_and_peasant_ad.wav
+Loaded suppe_poet_and_peasant.wav: 48000 Hz, Stereo
+Encoded in 0.430510 seconds (fast mode)
+maksw@raspberrypi:~/madpcm $ ./test.out decode suppe_poet_and_peasant_ad.wav suppe_poet_and_peasant_d.wav
+Loaded suppe_poet_and_peasant_ad.wav: 2 channels, 48000 Hz, 28272640 samples
+Decoded in 0.213578 seconds
 ```
 
 </details>
@@ -143,7 +157,7 @@ scary shit
 To me. I think. Better than IMA ADPCM.  
 No formal ABX tests were done yet.
 
-Compared to the source, MADPCM adds a small, mostly uncorrelated noise floor. Compared to IMA ADPCM, it sounds much cleaner.
+In my personal testing (Sony WF-1000XM4 connected via LDAC) compared to the source, MADPCM adds a very small, mostly uncorrelated noise floor. Compared to IMA ADPCM, it sounds much cleaner.
 
 ## how 2 use it
 
@@ -171,7 +185,7 @@ Q: Why make this?
 A: IMA ADPCM works. This works better. IMA's everywhere because it's cheap and simple, not because it's good.
 
 Q: Is this better than Opus/AAC/MP3?  
-A: If you squint hard enough and just look at the numbers.
+A: If you squint hard enough and just look at the numbers. This is a scalpel, not a swiss army knife.
 
 Q: Is this a competitor to Opus?  
 A: No.
