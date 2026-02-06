@@ -63,7 +63,7 @@ Measured on 16-bit PCM sources:
 
 All tested on a Ryzen 5 3600XT running Windows Server 2025 Datacenter build 26100.32230  
 Decode speed for MADPCM is the same on slow and fast, this affects only the encoder.  
-Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimize potential penalty.
+Encode speed for ADPCM-XQ includes file I/O, tested on a ramdisk to minimize potential penalty.  
 File size reduction: ~74% vs WAV, 4.48% overhead compared to IMA ADPCM.
 
 <details><summary>test file details</summary>
@@ -73,6 +73,34 @@ Egyptischer_Marsch.wav 43,5 MB Length: 03:57 Sample rate: 48 kHz Sample size: 16
 Marche_Persanne.wav 18,7 MB Length: 01:51 Sample rate: 48 kHz Sample size: 16 bit Stereo  
 suppe_poet_and_peasant.wav 107 MB Length: 09:49 Sample rate: 48 kHz Sample size: 16 bit Stereo  
 the_four_seasons.wav 665 MB Length: 01:00:33 Sample rate: 48 kHz Sample size: 16 bit Stereo
+
+</details>
+
+<details><summary>EBU Sound Quality Assessment Material</summary>
+
+**MADPCM** (slow):  
+| Audio Sample  | RMSE    | MAE  | PSNR  | SNR   |
+| ------------- | ------- | ---- | ----- | ----- |
+| Trumpet       | 16.0853 | 259  | 66.18 | 41.73 |
+| Castanets     | 80.8316 | 2502 | 52.16 | 20.94 |
+| Side Drum     | 16.3826 | 317  | 66.02 | 39.33 |
+| Glockenspiel  | 45.8915 | 1782 | 57.07 | 30.78 |
+| Vibraphone    | 17.9936 | 256  | 65.21 | 42.56 |
+| Grand Piano   | 15.4270 | 213  | 66.54 | 43.23 |
+| Harpsichord   | 30.6090 | 770  | 60.59 | 27.78 |
+| Female Speech | 45.9353 | 1135 | 57.07 | 33.53 |
+
+**IMA ADPCM** (ffmpeg):  
+| Audio Sample  | RMSE    | MAE   | PSNR  | SNR   |
+| ------------- | ------- | ----- | ----- | ----- |
+| Trumpet       | 34.8689 | 2434  | 59.46 | 35.01 |
+| Castanets     | 109.273 | 15673 | 49.54 | 18.33 |
+| Side Drum     | 24.5968 | 2407  | 62.49 | 35.80 |
+| Glockenspiel  | 83.6360 | 20459 | 51.86 | 25.57 |
+| Vibraphone    | 23.4344 | 865   | 62.91 | 40.26 |
+| Grand Piano   | 16.6159 | 1233  | 65.90 | 42.58 |
+| Harpsichord   | 39.5648 | 3725  | 58.36 | 25.55 |
+| Female Speech | 72.1851 | 3461  | 53.14 | 29.61 |
 
 </details>
 
