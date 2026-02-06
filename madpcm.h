@@ -114,7 +114,7 @@ static void madpcm__compute_autocorr(const int16_t* signal, int len, int order, 
     r[0] += (r[0] >> 9);
 }
 
-static int madpcm__compute_LPC(const int64_t* r, int order, int16_t* outCoeffs) {
+static bool madpcm__compute_LPC(const int64_t* r, int order, int16_t* outCoeffs) {
     int32_t a[MADPCM_LPC_ORDER + 1][MADPCM_LPC_ORDER + 1] = { 0 };
     int64_t e[MADPCM_LPC_ORDER + 1];
     e[0] = r[0];
@@ -128,7 +128,7 @@ static int madpcm__compute_LPC(const int64_t* r, int order, int16_t* outCoeffs) 
         int64_t num = r[k] - sum;
         int64_t den = e[k - 1];
         if (den == 0) den = 1;
-        if (madpcm__abs_int64(num) >= madpcm__abs_int64(den)) return 0;
+        if (madpcm__abs_int64(num) >= madpcm__abs_int64(den)) return false;
 
         int32_t lambda = (int32_t)((num << 24) / den);
         a[k][k] = lambda;
@@ -145,7 +145,7 @@ static int madpcm__compute_LPC(const int64_t* r, int order, int16_t* outCoeffs) 
     for (int i = 0; i < order; i++) {
         outCoeffs[i] = madpcm__clamp_q15(a[order][i + 1] >> 12);
     }
-    return 1;
+    return true;
 }
 
 // LUT-based Dequantizer
@@ -234,7 +234,7 @@ int madpcm_encode_block(const int16_t* inSamples, const int16_t* prevSamples, ui
 
     int32_t c0 = header->coeffs[0], c1 = header->coeffs[1];
     int32_t c2 = header->coeffs[2], c3 = header->coeffs[3];
-    int badModel = 0;
+    bool bad_model = false;
 
     for (int i = 0; i < MADPCM_BLOCK_SAMPLES; i++) {
         int subIdx = i >> 8;
@@ -253,23 +253,23 @@ int madpcm_encode_block(const int16_t* inSamples, const int16_t* prevSamples, ui
         if (madpcm__abs_int32(res) > maxResSub[subIdx]) maxResSub[subIdx] = madpcm__abs_int32(res);
         if (madpcm__abs_int32(inSamples[i]) > maxSigSub[subIdx]) maxSigSub[subIdx] = madpcm__abs_int32(inSamples[i]);
 
-        if (madpcm__abs_int32(res) > 28000) badModel = 1;
+        if (madpcm__abs_int32(res) > 28000) bad_model = true;
 
         simHist[3] = simHist[2]; simHist[2] = simHist[1]; simHist[1] = simHist[0]; simHist[0] = inSamples[i];
     }
 
-    int highZCR = zeroCrossings > (MADPCM_BLOCK_SAMPLES >> 2);
-    int lowGain = sigEnergy < (8 * (resEnergy + 1));
-    int useFallback = badModel || (highZCR && lowGain);
+    bool high_zcr = zeroCrossings > (MADPCM_BLOCK_SAMPLES >> 2);
+    bool low_gain = sigEnergy < (8 * (resEnergy + 1));
+    bool use_fallback = bad_model || (high_zcr && low_gain);
 
-    if (useFallback) {
+    if (use_fallback) {
         madpcm_memset(header->coeffs, 0, sizeof(header->coeffs));
         c0 = c1 = c2 = c3 = 0;
     }
 
     // Populate scales with Gaussian Correction (~0.66x)
     for (int k = 0; k < 4; k++) {
-        int32_t targetMax = useFallback ? maxSigSub[k] : maxResSub[k];
+        int32_t targetMax = use_fallback ? maxSigSub[k] : maxResSub[k];
         int32_t s = (targetMax * 2) / 3;
         if (s < 10) s = 10;
         header->scales[k] = madpcm__clamp_q15(s);
@@ -432,8 +432,7 @@ int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, const int
 
     // Flagging: Use LSB of first scale
     madpcm__block_header* h = (madpcm__block_header*)outBuffer;
-    if (useMS) h->scales[0] |= 1;
-    else       h->scales[0] &= ~1;
+    h->scales[0] = (h->scales[0] & ~1) | (useMS ? 1 : 0);
 
     return s1 + s2;
 }

@@ -4,8 +4,6 @@
 #include <string.h>
 #include <omp.h>
 #define MADPCM_IMPLEMENTATION
-#define MADPCM_FREESTANDING
-#define MADPCM_MEMFUNCS
 #include "madpcm.h"
 
 typedef struct {
