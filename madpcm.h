@@ -419,7 +419,7 @@ int madpcm_encode_block_stereo(const int16_t* inL, const int16_t* inR, const int
         eMS += madpcm__abs_int32(m) + madpcm__abs_int32(s);
     }
 
-    bool useMS = (eMS < eLR * 0.9f);
+    bool useMS = (eMS * 10 < eLR * 9);
     
     // If using MS, we must also convert the HISTORY to MS
     if (useMS) {

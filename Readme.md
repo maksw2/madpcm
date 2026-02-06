@@ -159,4 +159,5 @@ Q: Will you add [feature]?
 A: Depends. Open an issue.
 
 Q: Can I use this in production?  
-A: No warranty. Assume breaking changes until it's finished.
+A: No warranty. Assume breaking changes until it's finished.  
+If you *really* want to use it, at least keep track of the commit you used.
