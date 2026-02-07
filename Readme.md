@@ -148,6 +148,8 @@ Loaded 37_ad.wav: 2 channels, 44100 Hz, 661504 samples
 Decoded in 2.747253 seconds
 ```
 
+Encoder runs faster than realtime.  
+Decoder is ~5.4× realtime.  
 scary shit
 
 </details>
