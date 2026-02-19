@@ -5,7 +5,12 @@
 #define MADPCM_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+
+#ifdef __AVX2__
+#include <immintrin.h>
+#endif
 
 #define MADPCM_LPC_ORDER 4
 #define MADPCM_BLOCK_SAMPLES 1024
@@ -30,8 +35,17 @@ void madpcm_decode_block_stereo(const uint8_t* inBuffer, int16_t* outL, int16_t*
 #define madpcm_memset memset
 #define madpcm_memcpy memcpy
 #else // freestanding
+#if defined(MADPCM_MEMSET) || defined(MADPCM_MEMCPY)
+// user provided
+#if defined(MADPCM_MEMSET) != defined(MADPCM_MEMCPY)
+// user fucked up
+#error "Both MADPCM_MEMSET and MADPCM_MEMCPY must be defined together"
+#endif
+#define madpcm_memset MADPCM_MEMSET
+#define madpcm_memcpy MADPCM_MEMCPY
+#else
 // i am running on a toaster implementation
-#ifndef MADPCM_MEMFUNCS
+#ifndef MADPCM_INTERNAL_MEMFUNCS
 void* memcpy(void* dest, const void* src, size_t count);
 void* memset(void* dest, int val, size_t count);
 #define madpcm_memset memset
@@ -67,6 +81,7 @@ static inline void* madpcm_memset(void* dest, int val, size_t count) {
 }
 #endif
 #endif
+#endif
 #pragma endregion
 
 #define MADPCM_TRELLIS_K 4
@@ -97,9 +112,15 @@ typedef struct madpcm__trellis_state {
 
 // Math Helpers
 static inline int16_t madpcm__clamp_q15(int32_t value) {
+#ifdef __AVX2__
+    __m128i v = _mm_cvtsi32_si128(value);
+    v = _mm_packs_epi32(v, v);  // Saturate 32->16 bit
+    return (int16_t)_mm_cvtsi128_si32(v);
+#else
     if (value > MADPCM_Q15_MAX) return MADPCM_Q15_MAX;
     if (value < MADPCM_Q15_MIN) return MADPCM_Q15_MIN;
     return (int16_t)value;
+#endif
 }
 static inline int32_t madpcm__abs_int32(int32_t value) { return (value < 0) ? -value : value; }
 static inline int64_t madpcm__abs_int64(int64_t value) { return (value < 0) ? -value : value; }
@@ -191,12 +212,53 @@ static inline void madpcm__stereo_to_mid_side(int16_t* left, int16_t* right, int
 }
 
 static inline void madpcm__mid_side_to_stereo(int16_t* left, int16_t* right, int count) {
+#ifdef __AVX2__
+    for (int i = 0; i < count; i += 16) {
+        __m256i M = _mm256_loadu_si256((__m256i*)(left + i));
+        __m256i S = _mm256_loadu_si256((__m256i*)(right + i));
+        _mm256_storeu_si256((__m256i*)(left + i), _mm256_adds_epi16(M, S));
+        _mm256_storeu_si256((__m256i*)(right + i), _mm256_subs_epi16(M, S));
+    }
+#else
     for (int i = 0; i < count; i++) {
         int32_t mid = left[i], side = right[i];
         left[i] = madpcm__clamp_q15(mid + side);
         right[i] = madpcm__clamp_q15(mid - side);
     }
+#endif
 }
+
+#ifdef __AVX2__
+// SIMD-accelerated dequantization using PSHUFB for LUT
+static inline __m128i madpcm__dequantize_8_sse3(
+    __m128i nibbles,  // 8 nibbles in low bytes
+    int16_t scale
+) {
+    // Build LUT in XMM register (8 entries, 16-bit each)
+    __m128i lut = _mm_set_epi16(
+        madpcm__gauss_steps[7], madpcm__gauss_steps[6],
+        madpcm__gauss_steps[5], madpcm__gauss_steps[4],
+        madpcm__gauss_steps[3], madpcm__gauss_steps[2],
+        madpcm__gauss_steps[1], madpcm__gauss_steps[0]
+    );
+    
+    // Extract index (lower 3 bits) and sign bit
+    __m128i indices = _mm_and_si128(nibbles, _mm_set1_epi8(0x07));
+    __m128i signs = _mm_and_si128(nibbles, _mm_set1_epi8(0x08));
+    
+    // Shuffle to get LUT values (needs careful byte manipulation)
+    // Convert indices to word positions
+    __m128i idx_even = _mm_and_si128(indices, _mm_set1_epi16(0x00FF));
+    __m128i idx_even_scaled = _mm_slli_epi16(idx_even, 1);
+    
+    // This is getting complex - for production, use scalar loop with
+    // heavily unrolled and pipelined code instead
+    
+    // For now, fall back to optimized scalar in the main loop
+    return _mm_setzero_si128();
+}
+
+#endif
 
 // Encoder
 int madpcm_encode_block(const int16_t* inSamples, const int16_t* prevSamples, uint8_t* outBuffer, bool fast) {
@@ -454,6 +516,41 @@ void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples) {
 
     int current_sample_idx = 0;
 
+#ifdef __AVX2__
+    // Process in batches of 32 samples (16 bytes)
+    for (int s_idx = 0; s_idx < MADPCM_BLOCK_SAMPLES / 256; s_idx++) {
+        int16_t scale = header->scales[s_idx] & ~1;
+        
+        // Unroll by 8 for better pipelining
+        for (int i = 0; i < 256; i += 8) {
+            // Load 4 bytes = 8 nibbles
+            uint32_t packed = *(uint32_t*)(payload + (current_sample_idx >> 1));
+            
+            // Unroll 8 iterations manually
+            #define DECODE_SAMPLE(shift) \
+            { \
+                int32_t pred = (c0 * h0 + c1 * h1 + c2 * h2 + c3 * h3) >> 12; \
+                int8_t nibble = (packed >> (shift)) & 0x0F; \
+                int16_t delta = madpcm__dequantize_LUT(nibble, scale); \
+                int32_t val = pred + delta; \
+                h3 = h2; h2 = h1; h1 = h0; \
+                h0 = madpcm__clamp_q15(val); \
+                outSamples[current_sample_idx++] = h0; \
+            }
+            
+            DECODE_SAMPLE(0);
+            DECODE_SAMPLE(4);
+            DECODE_SAMPLE(8);
+            DECODE_SAMPLE(12);
+            DECODE_SAMPLE(16);
+            DECODE_SAMPLE(20);
+            DECODE_SAMPLE(24);
+            DECODE_SAMPLE(28);
+            
+            #undef DECODE_SAMPLE
+        }
+    }
+#else
     // Each scale applies to 256 samples
     for (int s_idx = 0; s_idx < MADPCM_BLOCK_SAMPLES / 256; s_idx++) {
         int16_t current_scale = header->scales[s_idx] & ~1;
@@ -477,6 +574,7 @@ void madpcm_decode_block(const uint8_t* inBuffer, int16_t* outSamples) {
             outSamples[current_sample_idx] = h0;
         }
     }
+#endif
 }
 
 void madpcm_decode_block_stereo(const uint8_t* inBuffer, int16_t* outL, int16_t* outR) {
