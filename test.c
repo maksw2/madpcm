@@ -161,7 +161,7 @@ void write_wav_header(FILE* f, int audioFormat, int channels, int rate, int bits
     uint16_t ch = channels;    fwrite(&ch, 2, 1, f);
     uint32_t sr = rate;        fwrite(&sr, 4, 1, f);
     
-    uint16_t blockAlign = (audioFormat == 1) ? (channels * (bits / 8)) : (channels == 2 ? MADPCM_STEREO_SIZE : MADPCM_MONO_SIZE);
+    uint16_t blockAlign = (audioFormat == 1) ? (channels * (bits + 7 )) : (channels == 2 ? MADPCM_STEREO_SIZE : MADPCM_MONO_SIZE);
     uint32_t byteRate = (audioFormat == 1) ? (rate * blockAlign) : ((rate / MADPCM_BLOCK_SAMPLES) * blockAlign);
 
     fwrite(&byteRate, 4, 1, f);
@@ -171,12 +171,11 @@ void write_wav_header(FILE* f, int audioFormat, int channels, int rate, int bits
     fwrite(&dataSize, 4, 1, f);
 }
 
-void write_wav_pcm(const char* filename, const int16_t* L, const int16_t* R, int samples, int rate) {
+void write_wav_pcm(const char* filename, const int16_t* L, const int16_t* R, int samples, int rate, int channels) {
     FILE* f = fopen(filename, "wb");
     if (!f) return;
     setvbuf(f, NULL, _IOFBF, 64 * 1024);
-
-    write_wav_header(f, 1, 2, rate, 16, samples * 4);
+    write_wav_header(f, 1, channels, rate, 16, samples * channels * 2);
 
     // Allocate a buffer to hold the interleaved data
     int16_t* buffer = malloc(samples * 2 * sizeof(int16_t));
@@ -194,13 +193,11 @@ void write_wav_pcm(const char* filename, const int16_t* L, const int16_t* R, int
     printf("Wrote %s\n", filename);
 }
 
-void write_wav_madpcm(const char* filename, const uint8_t* data, int size, int rate) {
+void write_wav_madpcm(const char* filename, const uint8_t* data, int size, int rate, int channels) {
     FILE* f = fopen(filename, "wb");
     if (!f) return;
     setvbuf(f, NULL, _IOFBF, 64 * 1024);
-
-    // Format 0x4D41, 0 bits per sample (compressed)
-    write_wav_header(f, MADPCM_WAVE_FORMAT, 2, rate, 0, size);
+    write_wav_header(f, MADPCM_WAVE_FORMAT, channels, rate, 4, size);
     fwrite(data, 1, size, f);
     fclose(f);
     printf("Wrote %s (Encoded size: %d bytes)\n", filename, size);
@@ -298,15 +295,7 @@ int main(int argc, char* argv[]) {
         double end = omp_get_wtime();
 
         printf("Encoded in %f seconds (%s mode)\n", end - start, fast ? "fast" : "slow");
-        FILE* f = fopen(outputPath, "wb");
-        if (!f) {
-            printf("fopen failed!\n");
-            return 1;
-        }
-        setvbuf(f, NULL, _IOFBF, 64 * 1024);
-        write_wav_header(f, MADPCM_WAVE_FORMAT, channels, rate, 0, numBlocks * blockSize);
-        fwrite(outBuf, 1, numBlocks * blockSize, f);
-        fclose(f);
+        write_wav_madpcm(outputPath, outBuf, numBlocks * blockSize, rate, channels);
 
         free(inL); free(inR); free(outBuf);
     }
@@ -352,27 +341,8 @@ int main(int argc, char* argv[]) {
 
         printf("Decoded in %f seconds\n", end - start);
 
-        FILE* f = fopen(outputPath, "wb");
-        if (!f) {
-            printf("fopen failed!\n");
-            return 1;
-        }
-        setvbuf(f, NULL, _IOFBF, 64 * 1024);
-        write_wav_header(f, 1, channels, rate, 16, totalSamples * channels * 2);
-        if (channels == 2) {
-            int16_t* interleaved = malloc(totalSamples * 2 * sizeof(int16_t));
-            if (interleaved) {
-                for (int i = 0; i < totalSamples; i++) {
-                    interleaved[i * 2]     = outL[i];
-                    interleaved[i * 2 + 1] = outR[i];
-                }
-                fwrite(interleaved, sizeof(int16_t), totalSamples * 2, f);
-                free(interleaved);
-            }
-        } else {
-            fwrite(outL, sizeof(int16_t), totalSamples, f);
-        }
-        fclose(f);
+        write_wav_pcm(outputPath, outL, outR, totalSamples, rate, channels);
+        
         free(outL); if (outR) free(outR); free(inBuf);
     }
     return 0;

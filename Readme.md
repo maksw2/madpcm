@@ -163,12 +163,7 @@ In my personal testing (Sony WF-1000XM4 connected via LDAC) compared to the sour
 
 ## how 2 use it
 
-it's an `stb` style library:  
-include `madpcm.h` in your code.  
-`MADPCM_IMPLEMENTATION` for the actual implementation (define **once**)  
-`MADPCM_FREESTANDING` builds the engine for freestanding  
-`MADPCM_INTERNAL_MEMFUNCS` defines own memcpy and memset  
-Use when MSVC /Oi- or always define it for freestanding gcc/clang ***if*** you don't have these functions.
+look in Reference.md
 
 ## what this does not care about
 
@@ -199,7 +194,7 @@ Q: Are there transforms or psychoacoustic models?
 A: No. Conceptually inspired by lossless predictive codecs like FLAC.
 
 Q: Why is encoding slow?  
-A: Quality costs time. Decode is what matters for playback.
+A: Quality costs time.
 
 Q: Will you add [feature]?  
 A: Depends. Open an issue.
